@@ -12,8 +12,6 @@ COPY --from=build-env /app/out ./
 RUN useradd -ms /bin/bash moduleuser
 USER moduleuser
 
-# LABEL org.opencontainers.image.source=https://github.com/Project-GAUDI/TransportController
 LABEL org.opencontainers.image.description="TransportController is an Azure IoT edge module that summarises received messages by property and sends messages when the specified elapsed time or maximum capacity is reached."
-# LABEL org.opencontainers.image.licenses=MIT
 
 ENTRYPOINT ["dotnet", "TransportController.dll"]
