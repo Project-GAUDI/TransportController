@@ -60,7 +60,7 @@ docker image build -t <IMAGE_NAME> ./TransportController/src/
 docker image build -t ghcr.io/<YOUR_GITHUB_USERNAME>/transportcontroller:<VERSION> ./TransportController/src/
 ```
 
-5. Dockerイメージをプライベートコンテナレジストリにプッシュ
+5. Dockerイメージをコンテナレジストリにプッシュ
 ```
 docker push <IMAGE_NAME>
 ```
