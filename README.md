@@ -41,7 +41,32 @@ TransportControllerは、受信したメッセージをプロパティ毎にま�
 ![schematic diagram](./docs/img/schematic_diagram.drawio.png)
 
 ## Quick Start
-鋭意製作中
+1. Personal Accese tokenを作成
+（参考: [個人用アクセス トークンを管理する](https://docs.github.com/ja/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)）
+
+2. リポジトリをクローン
+```
+git clone https://github.com/Project-GAUDI/TransportController.git
+```
+
+3. ./src/nuget.configの<GITHUB_USERNAME>と<PERSONAL_ACCESS_TOKEN>を自身のユーザー名とPersonal Accese tokenに書き換えてください
+
+4. Dockerイメージをビルド
+```
+docker image build -t <IMAGE_NAME> ./TransportController/src/
+```
+例）
+```
+docker image build -t ghcr.io/<YOUR_GITHUB_USERNAME>/transportcontroller:<VERSION> ./TransportController/src/
+```
+
+5. Dockerイメージをコンテナレジストリにプッシュ
+```
+docker push <IMAGE_NAME>
+```
+例）
+```
+docker push ghcr.io/<YOUR_GITHUB_USERNAME>/csvfilereceiver:<VERSION>
 
 ## イメージのURL
 準備中
