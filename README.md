@@ -49,7 +49,7 @@ TransportControllerは、受信したメッセージをプロパティ毎にま�
 git clone https://github.com/Project-GAUDI/TransportController.git
 ```
 
-3. ./src/nuget.configの<GITHUB_USERNAME>と<PERSONAL_ACCESS_TOKEN>を自身のユーザー名とPersonal Accese tokenに書き換えてください
+3. ./src/nuget_template.configの<GITHUB_USERNAME>と<PERSONAL_ACCESS_TOKEN>を自身のユーザー名とPersonal Accese tokenに書き換えて、ファイル名をnuget.configに変更してください
 
 4. Dockerイメージをビルド
 ```
