@@ -69,6 +69,8 @@ docker push <IMAGE_NAME>
 docker push ghcr.io/<YOUR_GITHUB_USERNAME>/csvfilereceiver:<VERSION>
 ```
 
+6. Azure IoT edgeで利用
+
 ## イメージのURL
 準備中
 | URL                                                                 | Description         |
