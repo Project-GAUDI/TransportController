@@ -1,10 +1,9 @@
-namespace TransportController
+namespace IotedgeV2TransportController
 {
     using System;
     using System.Collections.Generic;
     using System.IO;
     using System.IO.Compression;
-    using Microsoft.Azure.Devices.Client;
     using TICO.GAUDI.Commons;
 
     /// <summary>
@@ -21,11 +20,11 @@ namespace TransportController
 
         public Compress CompType { get; private set; }
 
-        private Logger MyLogger { get; set; }
+        private ILogger MyLogger { get; set; }
 
         public MessageEncoder(string compress)
         {
-            MyLogger = Logger.GetLogger(this.GetType());
+            MyLogger = LoggerFactory.GetLogger(this.GetType());
 
             string tmp = compress.ToLower();
             switch (tmp)
@@ -50,10 +49,7 @@ namespace TransportController
         /// <returns>メッセージ</returns>
         public IotMessage EncodeMessage(byte[] body, IDictionary<string, string> properties)
         {
-            if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.TRACE)
-            {
-                MyLogger.WriteLog(Logger.LogLevel.TRACE, $"Start Method: {System.Reflection.MethodBase.GetCurrentMethod().Name}");
-            }
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"Start Method: {System.Reflection.MethodBase.GetCurrentMethod().Name}");
 
             // bodyの圧縮
             byte[] compBody;
@@ -72,16 +68,13 @@ namespace TransportController
             }
 
             var msg = new IotMessage(compBody);
-            msg.message.MessageId = Util.GetMessageId();
+            msg.SetMessageId(Util.GetMessageId());
 
             msg.SetProperties(properties);
 
             msg.SetProperty("iotedge_timestamp", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff") );
 
-            if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.TRACE)
-            {
-                MyLogger.WriteLog(Logger.LogLevel.TRACE, $"End Method: {System.Reflection.MethodBase.GetCurrentMethod().Name}");
-            }
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"End Method: {System.Reflection.MethodBase.GetCurrentMethod().Name}");
 
             return msg;
         }
@@ -93,10 +86,7 @@ namespace TransportController
         /// <returns></returns>
         private byte[] GzipBytes(byte[] msg)
         {
-            if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.TRACE)
-            {
-                MyLogger.WriteLog(Logger.LogLevel.TRACE, $"Start Method: {System.Reflection.MethodBase.GetCurrentMethod().Name}");
-            }
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"Start Method: {System.Reflection.MethodBase.GetCurrentMethod().Name}");
             
             byte[] ret;
 
@@ -110,10 +100,7 @@ namespace TransportController
                 ret = outstream.ToArray();
             }
 
-            if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.TRACE)
-            {
-                MyLogger.WriteLog(Logger.LogLevel.TRACE, $"End Method: {System.Reflection.MethodBase.GetCurrentMethod().Name}");
-            }
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"End Method: {System.Reflection.MethodBase.GetCurrentMethod().Name}");
 
             return ret;
         }
@@ -125,10 +112,7 @@ namespace TransportController
         /// <returns></returns>
         private byte[] DeflateBytes(byte[] msg)
         {
-            if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.TRACE)
-            {
-                MyLogger.WriteLog(Logger.LogLevel.TRACE, $"Start Method: {System.Reflection.MethodBase.GetCurrentMethod().Name}");
-            }
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"Start Method: {System.Reflection.MethodBase.GetCurrentMethod().Name}");
             
             byte[] ret;
 
@@ -142,10 +126,7 @@ namespace TransportController
                 ret = outstream.ToArray();
             }
 
-            if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.TRACE)
-            {
-                MyLogger.WriteLog(Logger.LogLevel.TRACE, $"End Method: {System.Reflection.MethodBase.GetCurrentMethod().Name}");
-            }
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"End Method: {System.Reflection.MethodBase.GetCurrentMethod().Name}");
 
             return ret;
         }
