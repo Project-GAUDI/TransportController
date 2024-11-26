@@ -10,6 +10,7 @@
   * [環境変数](#環境変数)
   * [Desired Properties](#desired-properties)
   * [Create Option](#create-option)
+  * [startupOrder](#startuporder)
 * [受信メッセージ](#受信メッセージ)
   * [Message Body](#message-body)
   * [Message Properties](#message-properties)
@@ -17,6 +18,8 @@
   * [Message Body](#SendMessageBody)
   * [Message Properties](#SendMessageProperties)
 * [Direct Method](#direct-method)
+  * [SetLogLevel](#setloglevel)
+  * [GetLogLevel](#getloglevel)
 * [ログ出力内容](#ログ出力内容)
 * [ユースケース](#ユースケース)
   * [ケース ①](#Usecase1)
@@ -80,8 +83,7 @@ docker push ghcr.io/<YOUR_GITHUB_USERNAME>/csvfilereceiver:<VERSION>
 
 | Module Version | IoTEdge | edgeAgent | edgeHub  | amd64 verified on | arm64v8 verified on | arm32v7 verified on |
 | -------------- | ------- | --------- | -------- | ----------------- | ------------------- | ------------------- |
-| 4.0.4          | 1.4.27  | 1.4.27    | 1.4.27   | ubuntu20.04       | －                  | －                  |
-
+| 6.0.0          | 1.5.0   | 1.5.6     | 1.5.6    | ubuntu22.04       | －                  | －                  |
 
 ## Deployment 設定値
 
@@ -89,33 +91,29 @@ docker push ghcr.io/<YOUR_GITHUB_USERNAME>/csvfilereceiver:<VERSION>
 
 #### 環境変数の値
 
-| Key                 | Required | Default | Description                                                                               |
-| ------------------- | -------- | ------- |----------------------------------------------------------------------------------------- |
-| TransportProtocol   |          | Amqp    | ModuleClientの接続プロトコル。<br>["Amqp", "Mqtt"]                        |
-| LogLevel            |          | info    | 出力ログレベル。<br>["trace", "debug", "info", "warn", "error"]           |
-| DefaultReceiveTopic |          | IoTHub  | 受信時のトピック形式。 <br>["IoTHub", "Mqtt"]                            |
-| DefaultSendTopic    |          | IoTHub  | 送信時のトピック形式。 <br>["IoTHub", "Mqtt"]                            |
-| M2MqttFlag          |          | false   | 通信に利用するAPIの切り替えフラグ。<br>false ： IoTHubトピックのみ利用可能。<br>true ： IoTHubトピックとMqttトピックが利用可能。ただし、SasTokenの発行と設定が必要。 |
-| SasToken            | △       |         | M2MqttFlag=true時必須。edgeHubと接続する際に必要なモジュール毎の署名。 |
+| Key                       | Required | Default | Recommend | Description                                                     |
+| ------------------------- | -------- | ------- | --------- | ---------------------------------------------------------------- |
+| TransportProtocol         |          | Amqp    |           | ModuleClient の接続プロトコル。<br>["Amqp", "Mqtt"] |
+| LogLevel                  |          | info    |           | 出力ログレベル。<br>["trace", "debug", "info", "warn", "error"] |
 
 ### Desired Properties
 
 #### Desired Properties の値
 
-| JSON Key         | Type    | Required | Default | Description                                                                                                                                                                                      |
-| ---------------- | ------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| input            | string  |          | input   | メッセージのインプット名。                                                                                                                                                                         |
-| output           | string  |          | output  | メッセージを送信するアウトプット名。                                                                                                                                                               |
-| compress         | string  |          | none    | メッセージの圧縮形式。　「gzip」、「deflate」が選択可能<br>上記以外の場合は「none」扱いとなりメッセージは圧縮されない。                                                                              |
-| transportcontrol | boolean | 〇       |         | 転送制御の有効可否「true」、「false」で設定。                                                                                                                                                      |
-| bandwidthcontrol | boolean | △       |         | transportcontrol=true時必須。帯域制御機能の有効可否 「true」、「false」で設定。　                                                                                                 |
-| sendsizemax      | number  | △       |         | transportcontrol=true時必須。メッセージのバッファリング最大サイズ（バイト）。　                                                                                                        |
-| sendcycle        | number  | △       |         | transportcontrol=true時必須。メッセージの送信間隔（ミリ秒）。　                                                                                                                        |
-| unitkey          | string  |          | null    | transportcontrol=true時有効。メッセージをバッファリングする際のグルーピングキー。<br>カンマ区切りで指定する。<br>指定しない場合はすべてのメッセージが1つのグループでバッファリングされる。 |
+| JSON Key         | Type    | Required | Default | Recommend | Description                                                                |
+| ---------------- | ------- | -------- | ------- | --------- | ------------------------------------------------------------------------   |
+| input            | string  |          | input   |           | メッセージのインプット名。                                                                                                                                                                         |
+| output           | string  |          | output  |           | メッセージを送信するアウトプット名。                                                                                                                                                               |
+| compress         | string  |          | none    |           | メッセージの圧縮形式。　「gzip」、「deflate」が選択可能<br>上記以外の場合は「none」扱いとなりメッセージは圧縮されない。                                                                              |
+| transportcontrol | boolean | 〇       |         |           | 転送制御の有効可否「true」、「false」で設定。                                                                                                                                                      |
+| bandwidthcontrol | boolean | △       |         |           | transportcontrol=true時必須。帯域制御機能の有効可否 「true」、「false」で設定。　                                                                                                 |
+| sendsizemax      | number  | △       |         |           | transportcontrol=true時必須。メッセージのバッファリング最大サイズ（バイト）。　                                                                                                        |
+| sendcycle        | number  | △       |         |           | transportcontrol=true時必須。メッセージの送信間隔（ミリ秒）。　                                                                                                                        |
+| unitkey          | string  |          | null    |           | transportcontrol=true時有効。メッセージをバッファリングする際のグルーピングキー。<br>カンマ区切りで指定する。<br>指定しない場合はすべてのメッセージが1つのグループでバッファリングされる。 |
 
 #### Desired Properties の記入例
 
-```
+```json
 {
   "input": "input",
   "output": "output",
@@ -136,8 +134,24 @@ docker push ghcr.io/<YOUR_GITHUB_USERNAME>/csvfilereceiver:<VERSION>
 
 #### Create Option の記入例
 
-```
+```json
 {}
+```
+
+### startupOrder
+
+#### startupOrder の値
+
+| JSON Key      | Type    | Required | Default | Recommend | Description |
+| ------------- | ------- | -------- | ------- | --------- | ----------- |
+| startupOrder  | uint    |  | 4294967295 | 400 | モジュールの起動順序。数字が小さいほど先に起動される。<br>["0"から"4294967295"] |
+
+#### startupOrder の記入例
+
+```json
+{
+  "startupOrder": 400
+}
 ```
 
 ## 受信メッセージ
@@ -168,7 +182,77 @@ docker push ghcr.io/<YOUR_GITHUB_USERNAME>/csvfilereceiver:<VERSION>
 
 ## Direct Method
 
-なし
+### SetLogLevel
+
+* 機能概要
+
+  実行中に一時的にLogLevelを変更する。<br>
+  変更はモジュール起動中または有効時間を過ぎるまで有効。<br>
+
+* payload
+
+  | JSON Key      | Type    | Required | default | Description |
+  | ------------- | ------- | -------- | -------- | ----------- |
+  | EnableSec     | integer  | 〇       |          | 有効時間(秒)。<br>-1:無期限<br>0:リセット(環境変数LogLevel相当に戻る)<br>1以上：指定時間(秒)経過まで有効。  |
+  | LogLevel      | string  | △       |          | EnableSec=0以外を指定時必須。指定したログレベルに変更する。<br>["trace", "debug", "info", "warn", "error"]  |
+
+  １時間"trace"レベルに変更する場合の設定例
+
+  ```json
+  {
+    "EnableSec": 3600,
+    "LogLevel": "trace"
+  }
+  ```
+
+* response
+
+  | JSON Key      | Type    | Description |
+  | ------------- | ------- | ----------- |
+  | status          | integer | 処理ステータス。<br>0:正常終了<br>その他:異常終了         |
+  | payload          | object  | レスポンスデータ。         |
+  | &nbsp; CurrentLogLevel | string  | 設定後のログレベル。（正常時のみ）<br>["trace", "debug", "info", "warn", "error"]  |
+  | &nbsp; Error | string  | エラーメッセージ（エラー時のみ）  |
+
+  ```json
+  {
+    "status": 0,
+    "paylaod":
+    {
+      "CurrentLogLevel": "trace"
+    }
+  }
+  ```
+
+### GetLogLevel
+
+* 機能概要
+
+  現在有効なLogLevelを取得する。<br>
+  通常は、LogLevel環境変数の設定値が返り、SetLogLevelで設定した有効時間内の場合は、その設定値が返る。<br>
+
+* payload
+
+  なし
+
+* response
+
+  | JSON Key      | Type    | Description |
+  | ------------- | ------- | ----------- |
+  | status          | integer | 処理ステータス。<br>0:正常終了<br>その他:異常終了         |
+  | payload          | object  | レスポンスデータ。         |
+  | &nbsp; CurrentLogLevel | string  | 現在のログレベル。（正常時のみ）<br>["trace", "debug", "info", "warn", "error"]  |
+  | &nbsp; Error | string  | エラーメッセージ（エラー時のみ）  |
+
+  ```json
+  {
+    "status": 0,
+    "paylaod":
+    {
+      "CurrentLogLevel": "trace"
+    }
+  }
+  ```
 
 ## ログ出力内容
 
@@ -192,7 +276,7 @@ docker push ghcr.io/<YOUR_GITHUB_USERNAME>/csvfilereceiver:<VERSION>
 
 #### desiredProperties
 
-```
+```JSON
 {
   "input": "input",
   "output": "output",
@@ -217,7 +301,7 @@ CSVReceiverのメッセージを圧縮したメッセージ
 
 出力例:圧縮したメッセージ
 
-```
+```JSON
   {"MachineNumber":3,"SettingDateAndTime":"2020-08-05T13:52:02.0000000Z", ...},
   {"MachineNumber":3,"SettingDateAndTime":"2020-08-05T13:52:02.0000000Z", ...},
   {"MachineNumber":3,"SettingDateAndTime":"2020-08-05T13:52:02.0000000Z", ...},
