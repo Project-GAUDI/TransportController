@@ -1,4 +1,4 @@
-namespace TransportController
+namespace IotedgeV2TransportController
 {
     using System;
     using System.Collections.Concurrent;
@@ -27,11 +27,15 @@ namespace TransportController
 
         private static ConcurrentDictionary<string, TransportController> MessageBufs { get; } = new ConcurrentDictionary<string, TransportController>();
 
-        private static Logger MyLogger { get; } = Logger.GetLogger(typeof(TransportController));
+        private static ILogger MyLogger { get; } = LoggerFactory.GetLogger(typeof(TransportController));
 
         private static readonly string SINGLE_UNIT_KEY = "sunit";
 
         private static SemaphoreSlim DictSemSlim { get; } = new SemaphoreSlim(1, 1);
+
+        private static readonly int headerLength = 20;    // "{"RecordList":[" + α
+        private static readonly int footerLength = 5;     // "]}" + α
+        private static readonly int delimiterLength = 1;  // ","
 
         /// <summary>
         /// 共通設定情報の格納
@@ -42,19 +46,19 @@ namespace TransportController
         /// <param name="unitKeys">累積キー / 指定なし（null）の場合はすべての受信メッセージを同一ユニットで累積</param>
         public static void SetSettings(bool isBandCtrlEnabled, int sendSizeMax, int sendCycle, string[] unitKeys = null)
         {
-            MyLogger.WriteLog(Logger.LogLevel.TRACE, $"Start Method: {System.Reflection.MethodBase.GetCurrentMethod().Name}");
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"Start Method: {System.Reflection.MethodBase.GetCurrentMethod().Name}");
 
             IsBandCtrlEnabled = isBandCtrlEnabled;
             SendSizeMax = sendSizeMax;
             SendCycle = sendCycle;
             UnitKeys = unitKeys;
-            SingleUnitMode = (unitKeys == null) ? true: false;
-            if(SingleUnitMode)
+            SingleUnitMode = (unitKeys == null) ? true : false;
+            if (SingleUnitMode)
             {
                 MessageBufs.TryAdd(SINGLE_UNIT_KEY, new TransportController(SINGLE_UNIT_KEY));
             }
 
-            MyLogger.WriteLog(Logger.LogLevel.TRACE, $"End Method: {System.Reflection.MethodBase.GetCurrentMethod().Name}");
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"End Method: {System.Reflection.MethodBase.GetCurrentMethod().Name}");
         }
 
         /// <summary>
@@ -63,23 +67,23 @@ namespace TransportController
         /// <param name="unitKey">ユニットキー</param>
         private static async Task LockAsync(string unitKey)
         {
-            MyLogger.WriteLog(Logger.LogLevel.TRACE, $"Start Method: LockAsync");
-            
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"Start Method: LockAsync");
+
             await DictSemSlim.WaitAsync();
 
             SemaphoreSlim sem = null;
 
-            var status=SemSlims.TryGetValue(unitKey, out sem);
-            if(false==status)
+            var status = SemSlims.TryGetValue(unitKey, out sem);
+            if (false == status)
             {
                 sem = new SemaphoreSlim(1, 1);
-                SemSlims.TryAdd(unitKey,sem);
+                SemSlims.TryAdd(unitKey, sem);
             }
             DictSemSlim.Release();
 
             await sem.WaitAsync();
 
-            MyLogger.WriteLog(Logger.LogLevel.TRACE, $"End Method: LockAsync");
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"End Method: LockAsync");
         }
 
         /// <summary>
@@ -88,20 +92,20 @@ namespace TransportController
         /// <param name="unitKey">ユニットキー</param>
         private static async Task Unlock(string unitKey)
         {
-            MyLogger.WriteLog(Logger.LogLevel.TRACE, $"Start Method: Unlock");
-            
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"Start Method: Unlock");
+
             await DictSemSlim.WaitAsync();
 
             SemaphoreSlim sem = null;
 
-            var status=SemSlims.TryGetValue(unitKey, out sem);
-            if(true==status)
+            var status = SemSlims.TryGetValue(unitKey, out sem);
+            if (true == status)
             {
                 sem.Release();
             }
             DictSemSlim.Release();
 
-            MyLogger.WriteLog(Logger.LogLevel.TRACE, $"End Method: Unlock");
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"End Method: Unlock");
         }
 
         /// <summary>
@@ -112,30 +116,27 @@ namespace TransportController
         /// <returns></returns>
         public static async Task SaveMessage(byte[] body, IDictionary<string, string> properties)
         {
-            if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.TRACE)
-            {
-                MyLogger.WriteLog(Logger.LogLevel.TRACE, $"Start Method: SaveMessage");
-            }
-            
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"Start Method: SaveMessage");
+
             // 同一ユニットで累積
-            if(SingleUnitMode)
+            if (SingleUnitMode)
             {
                 await LockAsync(SINGLE_UNIT_KEY);
-                var tmpBuf=MessageBufs[SINGLE_UNIT_KEY];
+                var tmpBuf = MessageBufs[SINGLE_UNIT_KEY];
                 await tmpBuf.Add(body, properties);
                 await Unlock(SINGLE_UNIT_KEY);
-                if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.TRACE)
+                if (MyLogger.IsLogLevelToOutput(ILogger.LogLevel.TRACE))
                 {
-                    MyLogger.WriteLog(Logger.LogLevel.TRACE, $"End Method: SaveMessage. SingleUnitMode={SingleUnitMode}.");
+                    MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"End Method: SaveMessage. SingleUnitMode={SingleUnitMode}.");
                 }
                 return;
             }
 
             // キー値の取得
             StringBuilder sb = new StringBuilder();
-            foreach(var key in UnitKeys)
+            foreach (var key in UnitKeys)
             {
-                if(properties.TryGetValue(key, out string val))
+                if (properties.TryGetValue(key, out string val))
                 {
                     sb.Append(val);
                 }
@@ -151,7 +152,7 @@ namespace TransportController
             TransportController tc = null;
 
             await LockAsync(bufkey);
-            if(MessageBufs.TryGetValue(bufkey, out tc))
+            if (MessageBufs.TryGetValue(bufkey, out tc))
             {
                 await tc.Add(body, properties);
             }
@@ -163,20 +164,17 @@ namespace TransportController
             }
             await Unlock(bufkey);
 
-            if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.TRACE)
-            {
-                MyLogger.WriteLog(Logger.LogLevel.TRACE, $"End Method: SaveMessage");
-            }
-
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"End Method: SaveMessage");
         }
 
         /// <summary>
         /// 累積済みの全メッセージを送信し、メッセージバッファをクリアする
         /// </summary>
+        /// TerminateAsyncから呼び出しのみ
         public static async Task FlushAndDisposeAll()
         {
-            MyLogger.WriteLog(Logger.LogLevel.TRACE, $"Start Method: FlushAndDisposeAll");
-            
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"Start Method: FlushAndDisposeAll");
+
             await DictSemSlim.WaitAsync();
 
             // タイマーを停止
@@ -196,7 +194,7 @@ namespace TransportController
 
             DictSemSlim.Release();
 
-            MyLogger.WriteLog(Logger.LogLevel.TRACE, $"End Method: FlushAndDisposeAll");
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"End Method: FlushAndDisposeAll");
         }
 
         private string myUnitKey = "";
@@ -212,7 +210,7 @@ namespace TransportController
         private TransportController(string unitkey)
         {
             myUnitKey = unitkey;
-            
+
             CycleTimer.Elapsed += CycleTimer_Elapsed;
             CycleTimer.AutoReset = true;
             CycleTimer.Enabled = true;
@@ -223,18 +221,15 @@ namespace TransportController
         /// タイマー処理
         /// </summary>
         /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private async void CycleTimer_Elapsed(object sender, System.Timers.ElapsedEventArgs e)
+        /// <param name="elapsedEventArgs"></param>
+        private async void CycleTimer_Elapsed(object sender, System.Timers.ElapsedEventArgs elapsedEventArgs)
         {
-            if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.TRACE)
-            {
-                MyLogger.WriteLog(Logger.LogLevel.TRACE, $"Start Method: CycleTimer_Elapsed");
-            }
-            
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"Start Method: CycleTimer_Elapsed");
+
             await LockAsync(myUnitKey);
             try
             {
-                if(ExistBuffer())
+                if (ExistBuffer())
                 {
                     await Flush();
                 }
@@ -248,10 +243,7 @@ namespace TransportController
                 await Unlock(myUnitKey);
             }
 
-            if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.TRACE)
-            {
-                MyLogger.WriteLog(Logger.LogLevel.TRACE, $"End Method: CycleTimer_Elapsed");
-            }
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"End Method: CycleTimer_Elapsed");
         }
 
         /// <summary>
@@ -261,7 +253,7 @@ namespace TransportController
         {
             // 使用頻度がかなり高いためTRACEログには残さない
             bool rt = false;
-            if(0 < BufferedMessageSize)
+            if (0 < BufferedMessageSize)
             {
                 rt = true;
             }
@@ -274,24 +266,22 @@ namespace TransportController
         /// <param name="body">本文</param>
         /// <param name="properties">プロパティ</param>
         /// <returns></returns>
+        /// SaveMessageから呼び出しのみ
         private async Task Add(byte[] body, IDictionary<string, string> properties)
         {
-            if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.TRACE)
-            {
-                MyLogger.WriteLog(Logger.LogLevel.TRACE, $"Start Method: Add (UnitKey={myUnitKey})");
-            }
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"Start Method: Add (UnitKey={myUnitKey})");
 
             try
             {
                 // メッセージサイズが上限に達する場合
-                if (BufferedMessageSize + body.Length > SendSizeMax)
+                if (BufferedMessageSize + body.Length + headerLength + footerLength > SendSizeMax)
                 {
                     if (IsBandCtrlEnabled)
                     {
-                        MyLogger.WriteLog(Logger.LogLevel.INFO, $"Dropped record(buffer size over).");
-                        if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.TRACE)
+                        MyLogger.WriteLog(ILogger.LogLevel.INFO, $"Dropped record(buffer size over).");
+                        if (MyLogger.IsLogLevelToOutput(ILogger.LogLevel.TRACE))
                         {
-                            MyLogger.WriteLog(Logger.LogLevel.TRACE, $"End Method: Add (UnitKey={myUnitKey})");
+                            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"End Method: Add (UnitKey={myUnitKey})");
                         }
                         return;
                     }
@@ -302,7 +292,7 @@ namespace TransportController
                 }
 
                 // メッセージの保存
-                BufferedMessageSize += body.Length;
+                BufferedMessageSize += body.Length + delimiterLength; // "," 分加算
                 BufferedMessage.Enqueue(body);
 
                 // プロパティの更新（後勝ち）
@@ -314,33 +304,28 @@ namespace TransportController
                     }
                 }
             }
-            catch(Exception e)
+            catch (Exception ex)
             {
-                MyLogger.WriteLog(Logger.LogLevel.ERROR, $"Add method failed. Exception: {e.Message}", true);
+                MyLogger.WriteLog(ILogger.LogLevel.ERROR, $"Add method failed. Exception: {ex.Message}", true);
             }
 
-            if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.TRACE)
-            {
-                MyLogger.WriteLog(Logger.LogLevel.TRACE, $"End Method: Add (UnitKey={myUnitKey})");
-            }
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"End Method: Add (UnitKey={myUnitKey})");
         }
 
         /// <summary>
         /// 累積メッセージの送信
         /// </summary>
         /// <returns></returns>
+        // FlushAndDisposeAll(Set/Unset不要)/CycleTimer_Elapsed(Set/Unset不要)/Addから呼び出し
         private async Task Flush()
         {
-            if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.TRACE)
-            {
-                MyLogger.WriteLog(Logger.LogLevel.TRACE, "Start Method: Flush");
-            }
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, "Start Method: Flush");
 
-            if(BufferedMessageSize == 0)
-            {            
-                if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.TRACE)
+            if (BufferedMessageSize == 0)
+            {
+                if (MyLogger.IsLogLevelToOutput(ILogger.LogLevel.TRACE))
                 {
-                    MyLogger.WriteLog(Logger.LogLevel.TRACE, $"End Method: Flush. Not sended.");
+                    MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"End Method: Flush. Not sended.");
                 }
                 return;
             }
@@ -350,48 +335,52 @@ namespace TransportController
             {
                 RecordList = new List<JsonMessage.RecordInfo>()
             };
-            foreach(var bf in BufferedMessage)
+            foreach (var bf in BufferedMessage)
             {
                 jsonMsg.RecordList.Add(JsonMessage.DeserializeRecordInfo(bf));
             }
             int cnt = jsonMsg.RecordList.Count;
             var body = JsonMessage.SerializeJsonMessageByte(jsonMsg);
 
+            int byteLength = Buffer.ByteLength(body);
+            if (byteLength > SendSizeMax)
+            {
+                MyLogger.WriteLog(ILogger.LogLevel.WARN, $"Send body size over. UnitKey: {myUnitKey}, BufferedMessageSize: {BufferedMessageSize}, byteLength: {byteLength}");
+            }
+
             // メッセージの送信
-            await Program.SendMessage(body, Properties);
-            MyLogger.WriteLog(Logger.LogLevel.INFO, $"Send 1 message. UnitKey: {myUnitKey}, RecordCount: {cnt}");
-
-            // 累積情報の初期化
-            BufferedMessage.Clear();
-            Properties.Clear();
-            BufferedMessageSize = 0;
-            
-            if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.DEBUG)
+            var ret = await MyApplicationMain.SendMessage(body, Properties);
+            if ( ret == true )
             {
-                MyLogger.WriteLog(Logger.LogLevel.DEBUG, $"MessageBufs count: {MessageBufs.Count}");
+                MyLogger.WriteLog(ILogger.LogLevel.INFO, $"Send 1 message. UnitKey: {myUnitKey}, RecordCount: {cnt}");
+
+                // 累積情報の初期化
+                BufferedMessage.Clear();
+                Properties.Clear();
+                BufferedMessageSize = 0;
+            }
+            else
+            {
+                MyLogger.WriteLog(ILogger.LogLevel.INFO, $"SendMessage failed, BufferedMessage is keep.", true);
             }
 
-            if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.TRACE)
+            if (MyLogger.IsLogLevelToOutput(ILogger.LogLevel.DEBUG))
             {
-                MyLogger.WriteLog(Logger.LogLevel.TRACE, $"End Method: Flush");
+                MyLogger.WriteLog(ILogger.LogLevel.DEBUG, $"MessageBufs count: {MessageBufs.Count}");
             }
+
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"End Method: Flush");
         }
 
         private void TimerStop()
         {
-            if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.TRACE)
-            {
-                MyLogger.WriteLog(Logger.LogLevel.TRACE, $"Start Method: {System.Reflection.MethodBase.GetCurrentMethod().Name}");
-            }
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"Start Method: {System.Reflection.MethodBase.GetCurrentMethod().Name}");
 
             CycleTimer.Stop();
             CycleTimer.Elapsed -= CycleTimer_Elapsed;
             CycleTimer.Dispose();
-            
-            if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.TRACE)
-            {
-                MyLogger.WriteLog(Logger.LogLevel.TRACE, $"End Method: {System.Reflection.MethodBase.GetCurrentMethod().Name}");
-            }
+
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"End Method: {System.Reflection.MethodBase.GetCurrentMethod().Name}");
         }
 
         /// <summary>
@@ -399,29 +388,25 @@ namespace TransportController
         /// </summary>
         private async Task RemoveController()
         {
-            if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.TRACE)
-            {
-                MyLogger.WriteLog(Logger.LogLevel.TRACE, $"Start Method: RemoveController");
-            }
-            
-            if(myUnitKey != SINGLE_UNIT_KEY)
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"Start Method: RemoveController");
+
+            if (myUnitKey != SINGLE_UNIT_KEY)
             {
                 TimerStop();
-                MessageBufs.Remove(myUnitKey,out var mbvalue);
+                MessageBufs.Remove(myUnitKey, out var mbvalue);
                 await DictSemSlim.WaitAsync();
-                SemSlims.Remove(myUnitKey,out var ssvalue);
+                SemSlims.Remove(myUnitKey, out var ssvalue);
                 DictSemSlim.Release();
-            }else{
-                if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.TRACE)
+            }
+            else
+            {
+                if (MyLogger.IsLogLevelToOutput(ILogger.LogLevel.TRACE))
                 {
-                    MyLogger.WriteLog(Logger.LogLevel.TRACE, $"Not removed controller.");
+                    MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"Not removed controller.");
                 }
             }
 
-            if ((int)Logger.OutputLogLevel <= (int)Logger.LogLevel.TRACE)
-            {
-                MyLogger.WriteLog(Logger.LogLevel.TRACE, $"End Method: RemoveController");
-            }
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"End Method: RemoveController");
         }
     }
 }
