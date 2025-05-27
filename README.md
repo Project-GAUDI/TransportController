@@ -303,7 +303,7 @@ CSVReceiverのメッセージを圧縮したメッセージ
 
 出力例:圧縮したメッセージ
 
-```JSON
+```
   {"MachineNumber":3,"SettingDateAndTime":"2020-08-05T13:52:02.0000000Z", ...},
   {"MachineNumber":3,"SettingDateAndTime":"2020-08-05T13:52:02.0000000Z", ...},
   {"MachineNumber":3,"SettingDateAndTime":"2020-08-05T13:52:02.0000000Z", ...},
