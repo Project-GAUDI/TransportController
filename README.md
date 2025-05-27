@@ -37,14 +37,16 @@ TransportControllerは、受信したメッセージをプロパティ毎にま�
 
 バッファリングの仕組み（「transportcontrol」がtrueの場合のみ有効）
 
-1. 「unitkey」で指定されたプロパティごとにメッセージをグループ化してバッファリングする
-2. バッファされたメッセージのサイズが「sendsizemax」で指定されたサイズを超えた場合、<br>バッファされているメッセージを1つのメッセージとして送信する（「bandwidthcontrol」がfalseの場合のみ）
-3. 「sendcycle」の時間が経過した場合、バッファされているメッセージを1つのメッセージとして送信する
+1. 「unitkey」で指定されたプロパティの値の組み合わせごとにメッセージをグループ化してバッファリングする
+1. バッファされたメッセージと受信したメッセージの合計サイズが「sendsizemax」で指定されたサイズを超えた場合、<br>
+  「bandwidthcontrol」がfalseの場合：バッファされているメッセージを1つのメッセージとして送信する<br>
+  「bandwidthcontrol」がtrueの場合 ：受信したメッセージを破棄する<br>  
+1. グループごとの最初の受信時刻から「sendcycle」の時間が経過した場合、バッファされているメッセージを1つのメッセージとして送信する
 
 ![schematic diagram](./docs/img/schematic_diagram.drawio.png)
 
 ## Quick Start
-1. Personal Accese tokenを作成
+1. Personal Access tokenを作成
 （参考: [個人用アクセス トークンを管理する](https://docs.github.com/ja/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)）
 
 2. リポジトリをクローン
@@ -52,7 +54,7 @@ TransportControllerは、受信したメッセージをプロパティ毎にま�
 git clone https://github.com/Project-GAUDI/TransportController.git
 ```
 
-3. ./src/nuget_template.configの<GITHUB_USERNAME>と<PERSONAL_ACCESS_TOKEN>を自身のユーザー名とPersonal Accese tokenに書き換えて、ファイル名をnuget.configに変更してください
+3. ./src/nuget_template.configの<GITHUB_USERNAME>と<PERSONAL_ACCESS_TOKEN>を自身のユーザー名とPersonal Access tokenに書き換えて、ファイル名をnuget.configに変更してください
 
 4. Dockerイメージをビルド
 ```
@@ -69,7 +71,7 @@ docker push <IMAGE_NAME>
 ```
 例）
 ```
-docker push ghcr.io/<YOUR_GITHUB_USERNAME>/csvfilereceiver:<VERSION>
+docker push ghcr.io/<YOUR_GITHUB_USERNAME>/transportcontroller:<VERSION>
 ```
 
 6. Azure IoT edgeで利用
@@ -81,9 +83,9 @@ docker push ghcr.io/<YOUR_GITHUB_USERNAME>/csvfilereceiver:<VERSION>
 
 ## 動作保証環境
 
-| Module Version | IoTEdge | edgeAgent | edgeHub  | amd64 verified on | arm64v8 verified on | arm32v7 verified on |
-| -------------- | ------- | --------- | -------- | ----------------- | ------------------- | ------------------- |
-| 6.0.0          | 1.5.0   | 1.5.6     | 1.5.6    | ubuntu22.04       | －                  | －                  |
+| Module Version | IoTEdge           | edgeAgent        | edgeHub         | amd64 verified on | arm64v8 verified on | arm32v7 verified on |
+| -------------- | ----------------- | ---------------- | --------------- | ----------------- | ------------------- | ------------------- |
+| 6.0.2          | 1.5.0<br>1.5.16   | 1.5.6<br>1.5.19  | 1.5.6<br>1.5.19 | ubuntu22.04       | －                  | －                  |
 
 ## Deployment 設定値
 
@@ -105,10 +107,10 @@ docker push ghcr.io/<YOUR_GITHUB_USERNAME>/csvfilereceiver:<VERSION>
 | input            | string  |          | input   |           | メッセージのインプット名。                                                                                                                                                                         |
 | output           | string  |          | output  |           | メッセージを送信するアウトプット名。                                                                                                                                                               |
 | compress         | string  |          | none    |           | メッセージの圧縮形式。　「gzip」、「deflate」が選択可能<br>上記以外の場合は「none」扱いとなりメッセージは圧縮されない。                                                                              |
-| transportcontrol | boolean | 〇       |         |           | 転送制御の有効可否「true」、「false」で設定。                                                                                                                                                      |
-| bandwidthcontrol | boolean | △       |         |           | transportcontrol=true時必須。帯域制御機能の有効可否 「true」、「false」で設定。　                                                                                                 |
+| transportcontrol | boolean | 〇       |         |           | 転送制御の有効可否「true」、「false」で設定。<br>true設定時は、GAUDI標準形式メッセージのみを対象とする。GAUDI標準形式以外のメッセージを受信した場合、エラーが発生し、そのメッセージは破棄される。                                                                                                                                                      |
+| bandwidthcontrol | boolean | △       |         |           | transportcontrol=true時必須。帯域制御機能の有効可否 「true」、「false」で設定。<br>true設定時に、バッファ中のメッセージと受信メッセージを合わせてsendsizemaxのサイズを超える場合、受信メッセージは破棄される。                                  |
 | sendsizemax      | number  | △       |         |           | transportcontrol=true時必須。メッセージのバッファリング最大サイズ（バイト）。　                                                                                                        |
-| sendcycle        | number  | △       |         |           | transportcontrol=true時必須。メッセージの送信間隔（ミリ秒）。　                                                                                                                        |
+| sendcycle        | number  | △       |         |           | transportcontrol=true時必須。メッセージの送信間隔（ミリ秒）。<br>「unitkey」ごとにグルーピングされたメッセージの最初の受信から「sendcycle」経過ごとにバッファ中のメッセージを送信する。　                                                                                                                        |
 | unitkey          | string  |          | null    |           | transportcontrol=true時有効。メッセージをバッファリングする際のグルーピングキー。<br>カンマ区切りで指定する。<br>指定しない場合はすべてのメッセージが1つのグループでバッファリングされる。 |
 
 #### Desired Properties の記入例
@@ -158,7 +160,7 @@ docker push ghcr.io/<YOUR_GITHUB_USERNAME>/csvfilereceiver:<VERSION>
 
 ### Message Body
 
-任意
+任意<br>ただし、transportcontrol=true設定の場合は、GAUDI標準形式メッセージのみを対象とする。
 
 ### Message Properties
 
