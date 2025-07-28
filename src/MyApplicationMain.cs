@@ -305,7 +305,8 @@ namespace IotedgeV2TransportController
             catch (Exception ex)
             {
                 MyLogger.WriteLog(ILogger.LogLevel.ERROR, $"OnMessageReceivedAsync failed. {ex}", true);
-                retStatus = false;
+                // 旧版(v5以前)と仕様をあわせるために、trueを設定
+                retStatus = true;
             }
             // ＝＝＝＝＝＝＝＝＝＝＝＝＝ここまで＝＝＝＝＝＝＝＝＝＝＝＝＝
 
