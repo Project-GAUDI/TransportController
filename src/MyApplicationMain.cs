@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using TICO.GAUDI.Commons;
@@ -13,6 +14,7 @@ namespace IotedgeV2TransportController
     internal class MyApplicationMain : IApplicationMain
     {
         static ILogger MyLogger { get; } = LoggerFactory.GetLogger(typeof(MyApplicationMain));
+        private int _disposed = 0; // 0: false, 1: true
 
         static string InputName { get; set; } = string.Empty;
 
@@ -22,11 +24,41 @@ namespace IotedgeV2TransportController
 
         static MessageEncoder MyEncoder { get; set; }
 
-        public void Dispose()
-        {
-            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"Start Method: Dispose");
+        /// エッジランタイムが無応答の場合にSendMessageAsyncをキャンセルするまでの待ち時間
+        static TimeSpan SendTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
-            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"End Method: Dispose");
+        /// <summary>
+        /// リソース解放
+        /// </summary>
+        /// <returns></returns>
+        public async ValueTask DisposeAsync()
+        {
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"Start Method: DisposeAsync");
+
+            // 2重実行防止
+            if (Interlocked.Exchange(ref _disposed, 1) == 1)
+            {
+                MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"Exit Method: Already disposed, skipping DisposeAsync");
+                return;
+            }
+
+            try
+            {
+                // ここでApplicationMainのリソース解放処理を行う
+                // 非同期リソースがある場合は適切に解放する
+                // ＝＝＝＝＝＝＝＝＝＝＝＝＝ここから＝＝＝＝＝＝＝＝＝＝＝＝＝
+
+                await Task.CompletedTask; // 非同期リソース解放処理をここに記述
+
+                // ＝＝＝＝＝＝＝＝＝＝＝＝＝ここまで＝＝＝＝＝＝＝＝＝＝＝＝＝
+            }
+            catch (Exception ex)
+            {
+                MyLogger.WriteLog(ILogger.LogLevel.ERROR, $"Error in DisposeAsync: {ex.Message}", true);
+                // 例外は再スローしない（Disposeでは通常例外を抑制）
+            }
+
+            MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"End Method: DisposeAsync");
         }
 
         /// <summary>
@@ -54,7 +86,6 @@ namespace IotedgeV2TransportController
         /// アプリケーション起動処理					
         /// システム初期化完了後に呼び出される
         /// </summary>
-        /// <param name=""></param>
         /// <returns></returns>
         public async Task<bool> StartAsync()
         {
@@ -113,132 +144,68 @@ namespace IotedgeV2TransportController
             // ＝＝＝＝＝＝＝＝＝＝＝＝＝ここから＝＝＝＝＝＝＝＝＝＝＝＝＝
             bool retStatus = true;
 
-            // MessageInput
-            InputName = "input";
             try
             {
-                InputName = Util.GetRequiredValue<string>(desiredProperties, "input");
-                MyLogger.WriteLog(ILogger.LogLevel.INFO, $"Property input is: {InputName}");
-            }
-            catch (Exception)
-            {
-                MyLogger.WriteLog(ILogger.LogLevel.INFO, $"Property input dose not exist and set \"{InputName}\"");
-            }
+                // MessageInput
+                InputName = Util.GetDesiredProperty<string>(desiredProperties, "input", false, "input");
 
-            // MessageOutput
-            OutputName = "output";
-            try
-            {
-                OutputName = Util.GetRequiredValue<string>(desiredProperties, "output");
-                MyLogger.WriteLog(ILogger.LogLevel.INFO, $"Property output is: {OutputName}");
-            }
-            catch (Exception)
-            {
-                MyLogger.WriteLog(ILogger.LogLevel.INFO, $"Property output dose not exist and set \"{OutputName}\"");
-            }
+                // MessageOutput
+                OutputName = Util.GetDesiredProperty<string>(desiredProperties, "output", false, "output");
 
-            // 圧縮モード
-            // Compress
-            string compress = "none";
-            try
-            {
-                compress = Util.GetRequiredValue<string>(desiredProperties, "compress");
-                MyLogger.WriteLog(ILogger.LogLevel.INFO, $"Property compress is: {compress}");
-            }
-            catch (Exception)
-            {
-                MyLogger.WriteLog(ILogger.LogLevel.INFO, $"Property compress dose not exist and set \"{compress}\"");
-            }
+                // 圧縮モード
+                var compress = Util.GetDesiredProperty<MessageEncoder.Compress>(desiredProperties, "compress", false, MessageEncoder.Compress.NONE);
 
-            // MessageEncoderのインスタンス作成
-            MyEncoder = new MessageEncoder(compress);
+                // MessageEncoderのインスタンスを作成
+                MyEncoder = new MessageEncoder(compress);
 
-            // 転送制御機能を有効化するかどうか
-            try
-            {
-                IsTransCtrlEnabled = Util.GetRequiredValue<bool>(desiredProperties, "transportcontrol");
-                MyLogger.WriteLog(ILogger.LogLevel.INFO, $"Property transportcontrol is: {IsTransCtrlEnabled}");
+                // 転送制御機能を有効化するかどうか
+                IsTransCtrlEnabled = Util.GetDesiredProperty<bool>(desiredProperties, "transportcontrol", true);
+
+                // 転送制御機能が無効の場合、以降のプロパティは無視する
+                if(IsTransCtrlEnabled)
+                {
+                    // 帯域制御機能を有効化するかどうか
+                    bool isBandCtrlEnabled = false;
+                    isBandCtrlEnabled = Util.GetDesiredProperty<bool>(desiredProperties, "bandwidthcontrol", true);
+
+                    // メッセージバッファの最大サイズ
+                    int sendSizeMax = 0;
+                    sendSizeMax = Util.GetDesiredProperty<int>(desiredProperties, "sendsizemax", true, 0, condition: x => x >= 1 && x <= 256000);
+
+                    // メッセージ送信サイクル
+                    int sendCycle = 0;
+                    sendCycle = Util.GetDesiredProperty<int>(desiredProperties, "sendcycle", true, 0, condition: x => x >= 1);
+
+                    // ユニットキー
+                    string strUnitKeys = null;
+                    strUnitKeys = Util.GetDesiredProperty<string>(desiredProperties, "unitkey", false, null);
+                    string[] unitKeys = null;
+                    if (strUnitKeys == null)
+                    {
+                        MyLogger.WriteLog(ILogger.LogLevel.INFO, $"Property unitkey dose not exist and set single unit mode.");
+                        unitKeys = null;
+                    }
+                    else
+                    {
+                        unitKeys = strUnitKeys.Split(",");
+                        foreach (string s in unitKeys)
+                        {
+                            MyLogger.WriteLog(ILogger.LogLevel.INFO, $"Property unitkey is: {s}");
+                        }
+                    }
+
+                    // TransportControllerのインスタンスを作成
+                    TransportController.SetSettings(isBandCtrlEnabled, sendSizeMax, sendCycle, unitKeys);
+                }
             }
             catch (Exception ex)
             {
-                var errmsg = $"Property transportcontrol dose not exist.";
-                MyLogger.WriteLog(ILogger.LogLevel.ERROR, $"{errmsg} {ex}", true);
+                var errmsg = $"Property error. {ex}";
                 MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"Exit Method: OnDesiredPropertiesReceivedAsync caused by {errmsg}");
                 retStatus = false;
                 return retStatus;
             }
 
-            // 転送制御機能が無効の場合、以降のプロパティは無視する
-            if(IsTransCtrlEnabled)
-            {
-                // 帯域制御機能を有効化するかどうか
-                bool isBandCtrlEnabled = false;
-                try
-                {
-                    isBandCtrlEnabled = Util.GetRequiredValue<bool>(desiredProperties, "bandwidthcontrol");
-                    MyLogger.WriteLog(ILogger.LogLevel.INFO, $"Property bandwidthcontrol is: {isBandCtrlEnabled}");
-                }
-                catch (Exception ex)
-                {
-                    var errmsg = $"Property bandwidthcontrol dose not exist.";
-                    MyLogger.WriteLog(ILogger.LogLevel.ERROR, $"{errmsg} {ex}", true);
-                    MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"Exit Method: OnDesiredPropertiesReceivedAsync caused by {errmsg}");
-                    retStatus = false;
-                    return retStatus;
-                }
-
-                // メッセージバッファのサイズ
-                int sendSizeMax = 0;
-                try
-                {
-                    sendSizeMax = Util.GetRequiredValue<int>(desiredProperties, "sendsizemax");
-                    MyLogger.WriteLog(ILogger.LogLevel.INFO, $"Property sendsizemax is: {sendSizeMax}");
-                }
-                catch (Exception ex)
-                {
-                    var errmsg = $"Property sendsizemax dose not exist.";
-                    MyLogger.WriteLog(ILogger.LogLevel.ERROR, $"{errmsg} {ex}", true);
-                    MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"Exit Method: OnDesiredPropertiesReceivedAsync caused by {errmsg}");
-                    retStatus = false;
-                    return retStatus;
-                }
-
-                // メッセージ送信サイクル
-                int sendCycle = 0;
-                try
-                {
-                    sendCycle = Util.GetRequiredValue<int>(desiredProperties, "sendcycle");
-                    MyLogger.WriteLog(ILogger.LogLevel.INFO, $"Property sendcycle is: {sendCycle}");
-                }
-                catch (Exception ex)
-                {
-                    var errmsg = $"Property sendcycle dose not exist.";
-                    MyLogger.WriteLog(ILogger.LogLevel.ERROR, $"{errmsg} {ex}", true);
-                    MyLogger.WriteLog(ILogger.LogLevel.TRACE, $"Exit Method: OnDesiredPropertiesReceivedAsync caused by {errmsg}");
-                    retStatus = false;
-                    return retStatus;
-                }
-
-                // バッファ条件
-                string[] unitKeys = null;
-                try
-                {
-                    string strUnitKeys = Util.GetRequiredValue<string>(desiredProperties, "unitkey");
-                    unitKeys = strUnitKeys.Split(",");
-
-                    foreach (string s in unitKeys)
-                    {
-                        MyLogger.WriteLog(ILogger.LogLevel.INFO, $"Property unitkey is: {s}");
-                    }
-                }
-                catch (Exception)
-                {
-                    MyLogger.WriteLog(ILogger.LogLevel.INFO, $"Property unitkey dose not exist and set single unit mode.");
-                }
-
-                // TransportControllerのインスタンスを作成
-                TransportController.SetSettings(isBandCtrlEnabled, sendSizeMax, sendCycle, unitKeys);
-            }
             await Task.CompletedTask;
             // ＝＝＝＝＝＝＝＝＝＝＝＝＝ここまで＝＝＝＝＝＝＝＝＝＝＝＝＝
 
@@ -316,7 +283,8 @@ namespace IotedgeV2TransportController
         }
 
         /// OnMessageReceivedAsync/Flushから呼び出しのみ、Set/Unset不要
-        public static async Task<bool> SendMessage(byte[] body, IDictionary<string, string> properties)
+        /// <param name="sendKey">呼び出し元のユニットキー</param>
+        public static async Task<bool> SendMessage(byte[] body, IDictionary<string, string> properties, string sendKey = null)
         {
             MyLogger.WriteLog(ILogger.LogLevel.TRACE, "Start Method: SendMessage");
 
@@ -325,9 +293,14 @@ namespace IotedgeV2TransportController
 
             try
             {
-                // メッセージをエンコードして送信
-                await engine.SendMessageAsync(OutputName, MyEncoder.EncodeMessage(body, properties));
+                using var cancellationTokenSource = new CancellationTokenSource(SendTimeout);
+                await engine.SendMessageAsync(OutputName, MyEncoder.EncodeMessage(body, properties), cancellationTokenSource.Token).ConfigureAwait(false);
                 retStatus = true;
+            }
+            catch (OperationCanceledException)
+            {
+                MyLogger.WriteLog(ILogger.LogLevel.ERROR, $"SendMessage timed out. Timeout: {SendTimeout.TotalSeconds} sec.", true);
+                retStatus = false;
             }
             catch (Exception ex)
             {
