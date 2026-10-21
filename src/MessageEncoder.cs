@@ -22,23 +22,10 @@ namespace IotedgeV2TransportController
 
         private ILogger MyLogger { get; set; }
 
-        public MessageEncoder(string compress)
+        public MessageEncoder(Compress compress)
         {
             MyLogger = LoggerFactory.GetLogger(this.GetType());
-
-            string tmp = compress.ToLower();
-            switch (tmp)
-            {
-                case "gzip":
-                    CompType = Compress.GZIP;
-                    break;
-                case "deflate":
-                    CompType = Compress.DEFLATE;
-                    break;
-                default:
-                    CompType = Compress.NONE;
-                    break;
-            }
+            CompType = compress;
         }
 
         /// <summary>
