@@ -1,6 +1,5 @@
 using System;
 using Xunit;
-using Xunit.Abstractions;
 using System.Threading.Tasks;
 using TICO.GAUDI.Commons;
 using TICO.GAUDI.Commons.Test;
